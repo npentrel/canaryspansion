@@ -192,6 +192,7 @@ class CanaryApp(app.App):
         )
         self.sensor = None
         self.leds = None
+        self.brightness = 100  # LED brightness, percent (10..100)
         self.co2 = None
         self.temperature = None
         self.humidity = None
@@ -251,7 +252,8 @@ class CanaryApp(app.App):
         try:
             # SK6805 is WS2812-compatible; one LED on HS_F
             self.leds = neopixel.NeoPixel(config.pin[HS_F], 1)
-            self.leds[0] = (20, 20, 20)
+            scale = self.brightness / 100
+            self.leds[0] = tuple(int(20 * scale) for _ in range(3))
             self.leds.write()
         except Exception as e:
             self.leds = None
@@ -313,6 +315,11 @@ class CanaryApp(app.App):
             self.back_handler()
             return
 
+        # B button steps LED brightness in 10% increments
+        if self.button_states.get(BUTTON_TYPES["RIGHT"]):
+            self.button_states.clear()
+            self._step_brightness()
+
         if self.sensor is None:
             return
 
@@ -333,11 +340,18 @@ class CanaryApp(app.App):
             self.error = str(e)
             self.status = "Read error"
 
+    def _step_brightness(self):
+        self.brightness += 10
+        if self.brightness > 100:
+            self.brightness = 0
+        self._update_led()
+
     def _update_led(self):
         if self.leds is None:
             return
         _, led_rgb = co2_color(self.co2)
-        self.leds[0] = led_rgb
+        scale = self.brightness / 100
+        self.leds[0] = tuple(int(c * scale) for c in led_rgb)
         self.leds.write()
 
     def draw(self, ctx):
@@ -399,7 +413,9 @@ class CanaryApp(app.App):
             )
         else:
             ctx.rgb(0.4, 0.45, 0.4).move_to(0, 90).text(
-                "port {}  v{}".format(self.hexpansion_config.port, APP_VERSION)
+                "port {}  v{}  LED {}%".format(
+                    self.hexpansion_config.port, APP_VERSION, self.brightness
+                )
             )
         ctx.restore()
 
